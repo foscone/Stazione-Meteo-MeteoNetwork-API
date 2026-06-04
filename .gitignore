@@ -1,0 +1,32 @@
+# Dati del backup del database (backup, dump, credenziali originali) - mai versionare
+backup/
+
+# Variabili d'ambiente / segreti
+.env
+*.env
+!.env.example
+
+# Dump/seed del database (dati, generati localmente - troppo grandi/non da versionare)
+db/seed/
+db/init/02-data.sql
+*.sql.gz
+
+# Volumi e dati runtime
+db/data/
+
+# Log
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS / tooling
+.DS_Store
+.idea/
+.vscode/
+.claude/
+*.swp

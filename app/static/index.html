@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Meteo</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>🌤️ Dashboard Meteo</h1>
+      <p id="station-info" class="subtitle">Caricamento stazione…</p>
+    </div>
+    <div id="latest-cards" class="cards"></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview">Andamento giornaliero</button>
+    <button class="tab" data-tab="compare">Confronto annate</button>
+    <button class="tab" data-tab="realtime">Tempo reale</button>
+    <button class="tab" data-tab="table">Tabella dati</button>
+  </nav>
+
+  <!-- ANDAMENTO GIORNALIERO -->
+  <section id="overview" class="panel active">
+    <div class="toolbar">
+      <label>Anno
+        <select id="overview-year"></select>
+      </label>
+    </div>
+    <div class="chart-box"><canvas id="chart-temp"></canvas></div>
+    <div class="chart-box"><canvas id="chart-rain"></canvas></div>
+  </section>
+
+  <!-- CONFRONTO ANNATE -->
+  <section id="compare" class="panel">
+    <div class="toolbar">
+      <label>Metrica
+        <select id="compare-metric"></select>
+      </label>
+      <div id="compare-years" class="checks"></div>
+    </div>
+    <div class="chart-box"><canvas id="chart-compare"></canvas></div>
+    <h3 class="section-title">Riepilogo mensile per anno</h3>
+    <div class="chart-box"><canvas id="chart-monthly"></canvas></div>
+  </section>
+
+  <!-- TEMPO REALE -->
+  <section id="realtime" class="panel">
+    <div class="toolbar">
+      <span class="hint">Ultime rilevazioni (ogni 15 minuti)</span>
+    </div>
+    <div class="chart-box"><canvas id="chart-rt-temp"></canvas></div>
+    <div class="chart-box"><canvas id="chart-rt-wind"></canvas></div>
+  </section>
+
+  <!-- TABELLA -->
+  <section id="table" class="panel">
+    <div class="toolbar">
+      <label>Anno
+        <select id="table-year"></select>
+      </label>
+      <span id="table-count" class="hint"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="daily-table"></table>
+    </div>
+  </section>
+
+  <footer class="footer">Dati: MeteoNetwork · aggiornamento automatico ogni 15 min</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+"use strict";
+
+const api = (p) => fetch(p).then((r) => {
+  if (!r.ok) throw new Error(p + " -> " + r.status);
+  return r.json();
+});
+
+const charts = {};
+const YEAR_COLORS = ["#38bdf8", "#f97316", "#a78bfa", "#34d399", "#f43f5e", "#fbbf24"];
+
+function makeChart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  const ctx = document.getElementById(id);
+  config.options = Object.assign({
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: { labels: { color: "#e2e8f0" } } },
+    scales: {
+      x: { ticks: { color: "#94a3b8", maxTicksLimit: 14 }, grid: { color: "#1e293b" } },
+      y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+    },
+  }, config.options || {});
+  charts[id] = new Chart(ctx, config);
+  return charts[id];
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- Header: stazione + condizioni attuali ----------
+async function loadStation() {
+  try {
+    const s = await api("/api/station");
+    const parts = [s.station_name || s.station_code, s.area, s.region_name].filter(Boolean);
+    document.getElementById("station-info").textContent =
+      parts.join(" · ") + (s.altitude != null ? ` · ${s.altitude} m s.l.m.` : "");
+  } catch (e) { /* ignora */ }
+}
+
+async function loadLatest() {
+  try {
+    const d = await api("/api/latest");
+    const cards = [
+      ["Temperatura", fmt(d.temperature, "°C")],
+      ["Umidità", fmt(d.rh, "%")],
+      ["Vento", fmt(d.wind_speed, " km/h")],
+      ["Raffica", fmt(d.wind_gust, " km/h")],
+      ["Pioggia oggi", fmt(d.daily_rain, " mm")],
+      ["Pressione", fmt(d.smlp, " hPa")],
+    ];
+    document.getElementById("latest-cards").innerHTML = cards.map(([l, v]) =>
+      `<div class="card"><div class="val">${v}</div><div class="lbl">${l}</div></div>`
+    ).join("") +
+      `<div class="card"><div class="val" style="font-size:.8rem">${(d.observation_time_local || "").replace("T", " ")}</div><div class="lbl">Aggiornato</div></div>`;
+  } catch (e) {
+    document.getElementById("latest-cards").innerHTML =
+      `<div class="card"><div class="lbl">Nessun dato realtime</div></div>`;
+  }
+}
+
+const fmt = (v, u = "") => (v == null ? "–" : Math.round(v * 10) / 10 + u);
+
+// ---------- Andamento giornaliero ----------
+async function loadOverview(year) {
+  const rows = await api(`/api/daily?year=${year}`);
+  const labels = rows.map((r) => r.observation_date);
+  makeChart("chart-temp", {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        line("T max", rows.map((r) => r.t_max), "#f97316"),
+        line("T media", rows.map((r) => r.t_med), "#38bdf8"),
+        line("T min", rows.map((r) => r.t_min), "#a78bfa"),
+      ],
+    },
+    options: { plugins: { title: title(`Temperature ${year} (°C)`) } },
+  });
+  makeChart("chart-rain", {
+    type: "bar",
+    data: { labels, datasets: [{ label: "Pioggia (mm)", data: rows.map((r) => r.rain), backgroundColor: "#34d399" }] },
+    options: { plugins: { title: title(`Pioggia ${year} (mm)`) } },
+  });
+}
+
+function line(label, data, color) {
+  return { label, data, borderColor: color, backgroundColor: color,
+           borderWidth: 2, pointRadius: 0, tension: 0.25 };
+}
+const title = (text) => ({ display: true, text, color: "#e2e8f0", font: { size: 14 } });
+
+// ---------- Confronto annate ----------
+let allYears = [];
+
+async function setupCompare() {
+  const metrics = await api("/api/metrics");
+  const msel = document.getElementById("compare-metric");
+  msel.innerHTML = metrics.map((m) => `<option value="${m.key}">${m.label} (${m.unit})</option>`).join("");
+  msel.value = "t_med";
+
+  const box = document.getElementById("compare-years");
+  box.innerHTML = allYears.map((y, i) =>
+    `<label><input type="checkbox" value="${y}" ${i < 2 ? "checked" : ""}/> ${y}</label>`
+  ).join("");
+
+  msel.addEventListener("change", loadCompare);
+  box.addEventListener("change", loadCompare);
+  loadCompare();
+}
+
+function selectedYears() {
+  return Array.from(document.querySelectorAll("#compare-years input:checked")).map((c) => c.value);
+}
+
+async function loadCompare() {
+  const metric = document.getElementById("compare-metric").value;
+  const years = selectedYears();
+  if (!years.length) return;
+
+  const res = await api(`/api/compare?metric=${metric}&years=${years.join(",")}`);
+  // Asse x = giorni dell'anno presenti nelle serie selezionate
+  const allMd = new Set();
+  Object.values(res.series).forEach((arr) => arr.forEach((p) => allMd.add(p.md)));
+  const labels = Array.from(allMd).sort();
+  const datasets = Object.keys(res.series).map((y, i) => {
+    const map = Object.fromEntries(res.series[y].map((p) => [p.md, p.value]));
+    return line(y, labels.map((md) => (md in map ? map[md] : null)), YEAR_COLORS[i % YEAR_COLORS.length]);
+  });
+  makeChart("chart-compare", {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      spanGaps: true,
+      plugins: { title: title(`${res.label} per giorno dell'anno (${res.unit})`) },
+    },
+  });
+
+  loadMonthly(metric);
+}
+
+const MONTHS = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+
+async function loadMonthly(metric) {
+  const res = await api(`/api/monthly?metric=${metric}`);
+  const yrs = Object.keys(res.data).sort();
+  const datasets = yrs.map((y, i) => ({
+    label: y,
+    data: MONTHS.map((_, m) => (res.data[y][m + 1] != null ? res.data[y][m + 1] : null)),
+    backgroundColor: YEAR_COLORS[i % YEAR_COLORS.length],
+  }));
+  const aggTxt = res.agg === "sum" ? "totale" : "media";
+  makeChart("chart-monthly", {
+    type: "bar",
+    data: { labels: MONTHS, datasets },
+    options: { plugins: { title: title(`${res.label} mensile (${aggTxt}, ${res.unit})`) } },
+  });
+}
+
+// ---------- Tempo reale ----------
+async function loadRealtime() {
+  const rows = await api("/api/realtime?limit=500");
+  const labels = rows.map((r) => (r.observation_time_local || "").replace("T", " ").slice(5, 16));
+  makeChart("chart-rt-temp", {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        line("Temperatura", rows.map((r) => r.temperature), "#f97316"),
+        line("Punto di rugiada", rows.map((r) => r.dew_point), "#38bdf8"),
+        { ...line("Umidità %", rows.map((r) => r.rh), "#34d399"), yAxisID: "y1" },
+      ],
+    },
+    options: {
+      plugins: { title: title("Temperatura / umidità recenti") },
+      scales: {
+        x: { ticks: { color: "#94a3b8", maxTicksLimit: 12 }, grid: { color: "#1e293b" } },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+        y1: { position: "right", ticks: { color: "#34d399" }, grid: { drawOnChartArea: false }, min: 0, max: 100 },
+      },
+    },
+  });
+  makeChart("chart-rt-wind", {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        line("Vento", rows.map((r) => r.wind_speed), "#38bdf8"),
+        line("Raffica", rows.map((r) => r.wind_gust), "#f43f5e"),
+      ],
+    },
+    options: { plugins: { title: title("Vento recente (km/h)") } },
+  });
+}
+
+// ---------- Tabella ----------
+const TABLE_COLS = [
+  ["observation_date", "Data"], ["t_min", "T min"], ["t_med", "T med"], ["t_max", "T max"],
+  ["rh_med", "UR med %"], ["slpres", "Press. hPa"], ["w_med", "Vento med"], ["w_max", "Raffica max"],
+  ["w_dir", "Dir."], ["rain", "Pioggia mm"],
+];
+
+async function loadTable(year) {
+  const rows = await api(`/api/daily?year=${year}`);
+  const thead = "<thead><tr>" + TABLE_COLS.map(([, l]) => `<th>${l}</th>`).join("") + "</tr></thead>";
+  const tbody = "<tbody>" + rows.slice().reverse().map((r) =>
+    "<tr>" + TABLE_COLS.map(([k]) => `<td>${r[k] == null ? "–" : r[k]}</td>`).join("") + "</tr>"
+  ).join("") + "</tbody>";
+  document.getElementById("daily-table").innerHTML = thead + tbody;
+  document.getElementById("table-count").textContent = `${rows.length} giorni`;
+}
+
+// ---------- Bootstrap ----------
+async function main() {
+  await Promise.all([loadStation(), loadLatest()]);
+  allYears = await api("/api/years");
+  if (!allYears.length) return;
+
+  const ovSel = document.getElementById("overview-year");
+  const tbSel = document.getElementById("table-year");
+  const opts = allYears.map((y) => `<option value="${y}">${y}</option>`).join("");
+  ovSel.innerHTML = opts;
+  tbSel.innerHTML = opts;
+
+  ovSel.addEventListener("change", () => loadOverview(ovSel.value));
+  tbSel.addEventListener("change", () => loadTable(tbSel.value));
+
+  await loadOverview(allYears[0]);
+  await setupCompare();
+  await loadRealtime();
+  await loadTable(allYears[0]);
+
+  // Aggiorna le condizioni attuali ogni 5 minuti
+  setInterval(loadLatest, 5 * 60 * 1000);
+}
+
+main();

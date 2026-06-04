@@ -1,0 +1,76 @@
+services:
+  db:
+    image: mariadb:10.5
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - db_data:/var/lib/mysql
+      # Schema (versionato) + seed dei dati (gitignored): eseguiti solo al primo avvio,
+      # quando il volume db_data e' vuoto. Ordine alfabetico: 01-schema poi 02-data.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - meteo
+
+  web:
+    build:
+      context: ./app
+    restart: unless-stopped
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASS: ${MYSQL_PASSWORD}
+      STATION_CODE: ${STATION_CODE}
+      TZ: ${TZ}
+    ports:
+      - "${WEB_PORT}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - meteo
+
+  collector:
+    build:
+      context: ./app
+    restart: unless-stopped
+    command: ["/app/collector/entrypoint.sh"]
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASS: ${MYSQL_PASSWORD}
+      METEONETWORK_MAIL: ${METEONETWORK_MAIL}
+      METEONETWORK_PASSWORD: ${METEONETWORK_PASSWORD}
+      METEONETWORK_TOKEN: ${METEONETWORK_TOKEN}
+      STATION_CODE: ${STATION_CODE}
+      CRON_REALTIME: ${CRON_REALTIME}
+      CRON_DAILY: ${CRON_DAILY}
+      TZ: ${TZ}
+    volumes:
+      - collector_state:/state
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - meteo
+
+volumes:
+  db_data:
+  collector_state:
+
+networks:
+  meteo:
