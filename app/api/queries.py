@@ -1,13 +1,13 @@
 """Query SQL e registro delle metriche per la dashboard."""
 
 # Nel dump possono esistere piu' record per la stessa data: teniamo solo
-# l'ultimo inserito per ogni observation_date (id massimo).
+# l'ultimo inserito per ogni (stazione, observation_date).
 DAILY_DEDUP = """
     SELECT d.* FROM daily_rolando d
     JOIN (
-        SELECT observation_date, MAX(id) AS mid
+        SELECT station_code, observation_date, MAX(id) AS mid
         FROM daily_rolando
-        GROUP BY observation_date
+        GROUP BY station_code, observation_date
     ) last ON d.id = last.mid
 """
 

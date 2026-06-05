@@ -8,6 +8,7 @@ Invocato a intervalli regolari da supercronic (vedi collector/crontab).
 """
 import os
 import sys
+import time
 import logging
 
 from api.db import get_connection
@@ -19,7 +20,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("collector")
 
-STATION_CODE = os.environ.get("STATION_CODE", "")
+
+def station_codes():
+    """Elenco delle stazioni da monitorare (env STATION_CODES, fallback STATION_CODE)."""
+    raw = os.environ.get("STATION_CODES") or os.environ.get("STATION_CODE", "")
+    return [c.strip() for c in raw.split(",") if c.strip()]
+
+
+# Pausa tra una stazione e l'altra per rispettare i rate limit dell'API.
+INTER_STATION_DELAY = float(os.environ.get("INTER_STATION_DELAY", "3"))
 
 
 def _f(v):
@@ -32,8 +41,8 @@ def _i(v):
     return None if v in (None, "") else int(float(v))
 
 
-def save_realtime():
-    data = meteonetwork.data_realtime(STATION_CODE)
+def save_realtime(station_code):
+    data = meteonetwork.data_realtime(station_code)
     sql = """
         INSERT INTO realtime_rolando (
             observation_time_local, observation_time_utc, station_code, place, area,
@@ -52,11 +61,11 @@ def save_realtime():
         _f(data.get("wind_gust")), _f(data.get("rain_rate")), _f(data.get("daily_rain")),
         _f(data.get("dew_point")), data.get("name"),
     )
-    _insert(sql, values, "realtime")
+    _insert(sql, values, f"realtime/{station_code}")
 
 
-def save_daily():
-    data = meteonetwork.data_daily(STATION_CODE)
+def save_daily(station_code):
+    data = meteonetwork.data_daily(station_code)
     obs_date = data.get("observation_date")
 
     # Evita duplicati: salta se la giornata e' gia' stata salvata.
@@ -90,7 +99,7 @@ def save_daily():
         _f(data.get("rain")), _f(data.get("rad_med")), _f(data.get("rad_max")),
         _f(data.get("uv_med")), _f(data.get("uv_max")),
     )
-    _insert(sql, values, "daily")
+    _insert(sql, values, f"daily/{station_code}")
 
 
 def _insert(sql, values, kind):
@@ -112,16 +121,26 @@ def main():
     if len(sys.argv) < 2 or sys.argv[1] not in ("realtime", "daily"):
         print("Uso: python -m collector.fetch [realtime|daily]", file=sys.stderr)
         sys.exit(2)
-    if not STATION_CODE:
-        log.error("STATION_CODE non configurato")
+    codes = station_codes()
+    if not codes:
+        log.error("Nessuna stazione configurata (STATION_CODES)")
         sys.exit(1)
-    try:
-        if sys.argv[1] == "realtime":
-            save_realtime()
-        else:
-            save_daily()
-    except Exception:
-        log.exception("Fetch %s fallito", sys.argv[1])
+
+    kind = sys.argv[1]
+    save = save_realtime if kind == "realtime" else save_daily
+
+    # Ogni stazione e' indipendente: un errore su una non blocca le altre.
+    failures = 0
+    for i, code in enumerate(codes):
+        if i:
+            time.sleep(INTER_STATION_DELAY)
+        try:
+            save(code)
+        except Exception:
+            failures += 1
+            log.exception("Fetch %s fallito per la stazione %s", kind, code)
+
+    if failures:
         sys.exit(1)
 
 

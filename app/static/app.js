@@ -1,9 +1,18 @@
 "use strict";
 
+const STATE = { station: null, years: [] };
+
 const api = (p) => fetch(p).then((r) => {
   if (!r.ok) throw new Error(p + " -> " + r.status);
   return r.json();
 });
+
+// Aggiunge la stazione selezionata alla query string.
+function apiUrl(path) {
+  if (!STATE.station) return path;
+  return path + (path.includes("?") ? "&" : "?") + "station=" + encodeURIComponent(STATE.station);
+}
+const apiS = (p) => api(apiUrl(p));
 
 const charts = {};
 const YEAR_COLORS = ["#38bdf8", "#f97316", "#a78bfa", "#34d399", "#f43f5e", "#fbbf24"];
@@ -35,10 +44,17 @@ document.querySelectorAll(".tab").forEach((btn) => {
   });
 });
 
+const fmt = (v, u = "") => (v == null ? "–" : Math.round(v * 10) / 10 + u);
+const title = (text) => ({ display: true, text, color: "#e2e8f0", font: { size: 14 } });
+function line(label, data, color) {
+  return { label, data, borderColor: color, backgroundColor: color,
+           borderWidth: 2, pointRadius: 0, tension: 0.25 };
+}
+
 // ---------- Header: stazione + condizioni attuali ----------
 async function loadStation() {
   try {
-    const s = await api("/api/station");
+    const s = await apiS("/api/station");
     const parts = [s.station_name || s.station_code, s.area, s.region_name].filter(Boolean);
     document.getElementById("station-info").textContent =
       parts.join(" · ") + (s.altitude != null ? ` · ${s.altitude} m s.l.m.` : "");
@@ -47,7 +63,7 @@ async function loadStation() {
 
 async function loadLatest() {
   try {
-    const d = await api("/api/latest");
+    const d = await apiS("/api/latest");
     const cards = [
       ["Temperatura", fmt(d.temperature, "°C")],
       ["Umidità", fmt(d.rh, "%")],
@@ -66,11 +82,9 @@ async function loadLatest() {
   }
 }
 
-const fmt = (v, u = "") => (v == null ? "–" : Math.round(v * 10) / 10 + u);
-
 // ---------- Andamento giornaliero ----------
 async function loadOverview(year) {
-  const rows = await api(`/api/daily?year=${year}`);
+  const rows = await apiS(`/api/daily?year=${year}`);
   const labels = rows.map((r) => r.observation_date);
   makeChart("chart-temp", {
     type: "line",
@@ -91,29 +105,21 @@ async function loadOverview(year) {
   });
 }
 
-function line(label, data, color) {
-  return { label, data, borderColor: color, backgroundColor: color,
-           borderWidth: 2, pointRadius: 0, tension: 0.25 };
-}
-const title = (text) => ({ display: true, text, color: "#e2e8f0", font: { size: 14 } });
-
 // ---------- Confronto annate ----------
-let allYears = [];
+function buildCompareYears() {
+  const box = document.getElementById("compare-years");
+  box.innerHTML = STATE.years.map((y, i) =>
+    `<label><input type="checkbox" value="${y}" ${i < 2 ? "checked" : ""}/> ${y}</label>`
+  ).join("");
+}
 
-async function setupCompare() {
+async function setupMetricSelect() {
   const metrics = await api("/api/metrics");
   const msel = document.getElementById("compare-metric");
   msel.innerHTML = metrics.map((m) => `<option value="${m.key}">${m.label} (${m.unit})</option>`).join("");
   msel.value = "t_med";
-
-  const box = document.getElementById("compare-years");
-  box.innerHTML = allYears.map((y, i) =>
-    `<label><input type="checkbox" value="${y}" ${i < 2 ? "checked" : ""}/> ${y}</label>`
-  ).join("");
-
   msel.addEventListener("change", loadCompare);
-  box.addEventListener("change", loadCompare);
-  loadCompare();
+  document.getElementById("compare-years").addEventListener("change", loadCompare);
 }
 
 function selectedYears() {
@@ -123,10 +129,9 @@ function selectedYears() {
 async function loadCompare() {
   const metric = document.getElementById("compare-metric").value;
   const years = selectedYears();
-  if (!years.length) return;
+  if (!metric || !years.length) return;
 
-  const res = await api(`/api/compare?metric=${metric}&years=${years.join(",")}`);
-  // Asse x = giorni dell'anno presenti nelle serie selezionate
+  const res = await apiS(`/api/compare?metric=${metric}&years=${years.join(",")}`);
   const allMd = new Set();
   Object.values(res.series).forEach((arr) => arr.forEach((p) => allMd.add(p.md)));
   const labels = Array.from(allMd).sort();
@@ -137,10 +142,7 @@ async function loadCompare() {
   makeChart("chart-compare", {
     type: "line",
     data: { labels, datasets },
-    options: {
-      spanGaps: true,
-      plugins: { title: title(`${res.label} per giorno dell'anno (${res.unit})`) },
-    },
+    options: { spanGaps: true, plugins: { title: title(`${res.label} per giorno dell'anno (${res.unit})`) } },
   });
 
   loadMonthly(metric);
@@ -149,7 +151,7 @@ async function loadCompare() {
 const MONTHS = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
 
 async function loadMonthly(metric) {
-  const res = await api(`/api/monthly?metric=${metric}`);
+  const res = await apiS(`/api/monthly?metric=${metric}`);
   const yrs = Object.keys(res.data).sort();
   const datasets = yrs.map((y, i) => ({
     label: y,
@@ -166,7 +168,7 @@ async function loadMonthly(metric) {
 
 // ---------- Tempo reale ----------
 async function loadRealtime() {
-  const rows = await api("/api/realtime?limit=500");
+  const rows = await apiS("/api/realtime?limit=500");
   const labels = rows.map((r) => (r.observation_time_local || "").replace("T", " ").slice(5, 16));
   makeChart("chart-rt-temp", {
     type: "line",
@@ -208,7 +210,7 @@ const TABLE_COLS = [
 ];
 
 async function loadTable(year) {
-  const rows = await api(`/api/daily?year=${year}`);
+  const rows = await apiS(`/api/daily?year=${year}`);
   const thead = "<thead><tr>" + TABLE_COLS.map(([, l]) => `<th>${l}</th>`).join("") + "</tr></thead>";
   const tbody = "<tbody>" + rows.slice().reverse().map((r) =>
     "<tr>" + TABLE_COLS.map(([k]) => `<td>${r[k] == null ? "–" : r[k]}</td>`).join("") + "</tr>"
@@ -217,25 +219,48 @@ async function loadTable(year) {
   document.getElementById("table-count").textContent = `${rows.length} giorni`;
 }
 
-// ---------- Bootstrap ----------
-async function main() {
-  await Promise.all([loadStation(), loadLatest()]);
-  allYears = await api("/api/years");
-  if (!allYears.length) return;
-
+// ---------- Ricarica tutto per la stazione selezionata ----------
+async function reloadStation() {
   const ovSel = document.getElementById("overview-year");
   const tbSel = document.getElementById("table-year");
-  const opts = allYears.map((y) => `<option value="${y}">${y}</option>`).join("");
+
+  await Promise.all([loadStation(), loadLatest(), loadRealtime()]);
+
+  STATE.years = await apiS("/api/years");
+  const opts = STATE.years.map((y) => `<option value="${y}">${y}</option>`).join("");
   ovSel.innerHTML = opts;
   tbSel.innerHTML = opts;
+  buildCompareYears();
 
-  ovSel.addEventListener("change", () => loadOverview(ovSel.value));
-  tbSel.addEventListener("change", () => loadTable(tbSel.value));
+  if (STATE.years.length) {
+    await loadOverview(STATE.years[0]);
+    await loadCompare();
+    await loadTable(STATE.years[0]);
+  } else {
+    ["chart-temp", "chart-rain", "chart-compare", "chart-monthly"].forEach((id) => {
+      if (charts[id]) charts[id].destroy();
+    });
+    document.getElementById("daily-table").innerHTML = "";
+    document.getElementById("table-count").textContent = "nessun dato giornaliero per questa stazione";
+  }
+}
 
-  await loadOverview(allYears[0]);
-  await setupCompare();
-  await loadRealtime();
-  await loadTable(allYears[0]);
+// ---------- Bootstrap ----------
+async function main() {
+  // Selettore stazione
+  const list = await api("/api/stations");
+  const sel = document.getElementById("station-select");
+  sel.innerHTML = list.map((s) => `<option value="${s.station_code}">${s.name}</option>`).join("");
+  STATE.station = list.length ? list[0].station_code : null;
+  sel.value = STATE.station || "";
+  sel.addEventListener("change", () => { STATE.station = sel.value; reloadStation(); });
+
+  // Listener fissi (registrati una sola volta)
+  document.getElementById("overview-year").addEventListener("change", (e) => loadOverview(e.target.value));
+  document.getElementById("table-year").addEventListener("change", (e) => loadTable(e.target.value));
+  await setupMetricSelect();
+
+  await reloadStation();
 
   // Aggiorna le condizioni attuali ogni 5 minuti
   setInterval(loadLatest, 5 * 60 * 1000);

@@ -1,8 +1,19 @@
 # Meteo Dashboard
 
-Dashboard meteo per la stazione MeteoNetwork **STAZIONE1 (Padova)**: visualizza i
-dati storici e in tempo reale in forma tabellare e con grafici, e permette di
-**confrontare le annate** tra loro.
+Dashboard meteo per **più stazioni** MeteoNetwork: visualizza i dati storici e
+in tempo reale in forma tabellare e con grafici, permette di **confrontare le
+annate** tra loro e di passare da una stazione all'altra con un selettore.
+
+Stazioni monitorate di default (configurabili in `.env`):
+
+| Codice   | Stazione                  |
+|----------|---------------------------|
+| `STAZIONE1` | Padova - Centro           |
+| `STAZIONE2` | Palestro - Montecengio    |
+| `STAZIONE3` | Padova - Montà            |
+
+Lo storico nel backup riguarda solo `STAZIONE1`; per le altre stazioni i dati
+vengono raccolti dal collector a partire dal primo avvio.
 
 Il progetto è completamente dockerizzato e composto da tre servizi:
 
@@ -52,22 +63,29 @@ per eseguire a intervalli regolari:
 - **realtime** ogni 15 minuti (`CRON_REALTIME`) → tabella `realtime_rolando`
 - **daily** ogni giorno alle 09:00 (`CRON_DAILY`) → tabella `daily_rolando`
 
-I dati sono presi dalle API MeteoNetwork (`/v3/data-realtime` e `/v3/data-daily`).
+Ad ogni esecuzione il collector cicla su **tutte le stazioni** indicate in
+`STATION_CODES` (con una breve pausa tra una e l'altra per rispettare i rate
+limit). I dati sono presi dalle API MeteoNetwork (`/v3/data-realtime` e
+`/v3/data-daily`); ogni record è distinto dalla colonna `station_code`.
 Il **token Bearer** viene letto da `.env`, salvato nel volume `collector_state`
 e **rigenerato automaticamente** con login email/password quando scade (HTTP 401).
 
-Pianificazione e codice stazione si configurano da `.env`:
+Pianificazione e stazioni si configurano da `.env`:
 
 ```
-STATION_CODE=STAZIONE1
+STATION_CODES=STAZIONE1,STAZIONE2,STAZIONE3
 CRON_REALTIME=*/15 * * * *
 CRON_DAILY=0 9 * * *
 ```
 
 ## API REST
 
+Tutti gli endpoint dei dati accettano il parametro opzionale `station=<codice>`
+(default: la prima stazione configurata).
+
 | Endpoint                                   | Descrizione                                  |
 |--------------------------------------------|----------------------------------------------|
+| `GET /api/stations`                        | Elenco stazioni disponibili (per il selettore)|
 | `GET /api/station`                         | Metadati della stazione                      |
 | `GET /api/years`                           | Anni disponibili                             |
 | `GET /api/latest`                          | Ultima rilevazione in tempo reale            |
@@ -79,6 +97,7 @@ CRON_DAILY=0 9 * * *
 
 ## Dashboard
 
+In alto un **selettore stazione** cambia la stazione su tutte le sezioni.
 Quattro sezioni:
 
 1. **Andamento giornaliero** — temperature (min/med/max) e pioggia per anno.
