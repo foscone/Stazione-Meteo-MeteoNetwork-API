@@ -45,6 +45,40 @@ document.querySelectorAll(".tab").forEach((btn) => {
 });
 
 const fmt = (v, u = "") => (v == null ? "–" : Math.round(v * 10) / 10 + u);
+
+// --- Formattazione date in italiano (giorno/mese/anno) ---
+// "2025-02-10" o "2025-02-10T12:15:00" -> "10/02/2025"
+function dmy(iso) {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  return d ? `${d}/${m}/${y}` : String(iso);
+}
+// ISO -> "10/02" (giorno/mese, senza anno)
+function dm(iso) {
+  if (!iso) return "";
+  const [, m, d] = String(iso).slice(0, 10).split("-");
+  return d ? `${d}/${m}` : String(iso);
+}
+// chiave confronto "MM-DD" -> "10/02"
+function mdToDm(md) {
+  if (!md) return "";
+  const [m, d] = String(md).split("-");
+  return d ? `${d}/${m}` : md;
+}
+// "2026-06-05T12:15:00" -> "05/06/2026 12:15"
+function dmyTime(iso) {
+  if (!iso) return "";
+  const s = String(iso).replace("T", " ");
+  const [datePart, timePart = ""] = s.split(" ");
+  return `${dmy(datePart)} ${timePart.slice(0, 5)}`.trim();
+}
+// "2026-06-05T12:15:00" -> "05/06 12:15"
+function dmTime(iso) {
+  if (!iso) return "";
+  const s = String(iso).replace("T", " ");
+  const [datePart, timePart = ""] = s.split(" ");
+  return `${dm(datePart)} ${timePart.slice(0, 5)}`.trim();
+}
 const title = (text) => ({ display: true, text, color: "#e2e8f0", font: { size: 14 } });
 function line(label, data, color) {
   return { label, data, borderColor: color, backgroundColor: color,
@@ -75,7 +109,7 @@ async function loadLatest() {
     document.getElementById("latest-cards").innerHTML = cards.map(([l, v]) =>
       `<div class="card"><div class="val">${v}</div><div class="lbl">${l}</div></div>`
     ).join("") +
-      `<div class="card"><div class="val" style="font-size:.8rem">${(d.observation_time_local || "").replace("T", " ")}</div><div class="lbl">Aggiornato</div></div>`;
+      `<div class="card"><div class="val" style="font-size:.8rem">${dmyTime(d.observation_time_local)}</div><div class="lbl">Aggiornato</div></div>`;
   } catch (e) {
     document.getElementById("latest-cards").innerHTML =
       `<div class="card"><div class="lbl">Nessun dato realtime</div></div>`;
@@ -85,7 +119,7 @@ async function loadLatest() {
 // ---------- Andamento giornaliero ----------
 async function loadOverview(year) {
   const rows = await apiS(`/api/daily?year=${year}`);
-  const labels = rows.map((r) => r.observation_date);
+  const labels = rows.map((r) => dm(r.observation_date));
   makeChart("chart-temp", {
     type: "line",
     data: {
@@ -134,14 +168,15 @@ async function loadCompare() {
   const res = await apiS(`/api/compare?metric=${metric}&years=${years.join(",")}`);
   const allMd = new Set();
   Object.values(res.series).forEach((arr) => arr.forEach((p) => allMd.add(p.md)));
-  const labels = Array.from(allMd).sort();
+  // Chiave interna "MM-DD" per ordinare cronologicamente; etichetta mostrata "DD/MM".
+  const sortedMd = Array.from(allMd).sort();
   const datasets = Object.keys(res.series).map((y, i) => {
     const map = Object.fromEntries(res.series[y].map((p) => [p.md, p.value]));
-    return line(y, labels.map((md) => (md in map ? map[md] : null)), YEAR_COLORS[i % YEAR_COLORS.length]);
+    return line(y, sortedMd.map((md) => (md in map ? map[md] : null)), YEAR_COLORS[i % YEAR_COLORS.length]);
   });
   makeChart("chart-compare", {
     type: "line",
-    data: { labels, datasets },
+    data: { labels: sortedMd.map(mdToDm), datasets },
     options: { spanGaps: true, plugins: { title: title(`${res.label} per giorno dell'anno (${res.unit})`) } },
   });
 
@@ -169,7 +204,7 @@ async function loadMonthly(metric) {
 // ---------- Tempo reale ----------
 async function loadRealtime() {
   const rows = await apiS("/api/realtime?limit=500");
-  const labels = rows.map((r) => (r.observation_time_local || "").replace("T", " ").slice(5, 16));
+  const labels = rows.map((r) => dmTime(r.observation_time_local));
   makeChart("chart-rt-temp", {
     type: "line",
     data: {
@@ -213,7 +248,10 @@ async function loadTable(year) {
   const rows = await apiS(`/api/daily?year=${year}`);
   const thead = "<thead><tr>" + TABLE_COLS.map(([, l]) => `<th>${l}</th>`).join("") + "</tr></thead>";
   const tbody = "<tbody>" + rows.slice().reverse().map((r) =>
-    "<tr>" + TABLE_COLS.map(([k]) => `<td>${r[k] == null ? "–" : r[k]}</td>`).join("") + "</tr>"
+    "<tr>" + TABLE_COLS.map(([k]) => {
+      if (k === "observation_date") return `<td>${dmy(r[k])}</td>`;
+      return `<td>${r[k] == null ? "–" : r[k]}</td>`;
+    }).join("") + "</tr>"
   ).join("") + "</tbody>";
   document.getElementById("daily-table").innerHTML = thead + tbody;
   document.getElementById("table-count").textContent = `${rows.length} giorni`;
