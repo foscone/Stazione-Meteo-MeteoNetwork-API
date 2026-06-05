@@ -57,11 +57,14 @@ contiene un dump MariaDB con le tabelle `daily_rolando` e `realtime_rolando`.
 
 ## Recupero automatico dei nuovi dati
 
-Il servizio `collector` usa [supercronic](https://github.com/aptible/supercronic)
-per eseguire a intervalli regolari:
+Il servizio `collector` esegue uno **scheduler Python interno**
+([scheduler.py](app/collector/scheduler.py)): un singolo processo che resta vivo
+e lancia i fetch a intervalli regolari (niente cron esterno, niente crash-loop —
+un eventuale rate limit viene saltato fino al tick successivo invece di far
+ripartire il container).
 
-- **realtime** ogni 15 minuti (`CRON_REALTIME`) → tabella `realtime_rolando`
-- **daily** ogni giorno alle 09:00 (`CRON_DAILY`) → tabella `daily_rolando`
+- **realtime** ogni `REALTIME_INTERVAL_MIN` minuti → tabella `realtime_rolando`
+- **daily** una volta al giorno a partire da `DAILY_HOUR` → tabella `daily_rolando`
 
 Ad ogni esecuzione il collector cicla su **tutte le stazioni** indicate in
 `STATION_CODES` (con una breve pausa tra una e l'altra per rispettare i rate
@@ -74,8 +77,9 @@ Pianificazione e stazioni si configurano da `.env`:
 
 ```
 STATION_CODES=STAZIONE1,STAZIONE2,STAZIONE3
-CRON_REALTIME=*/15 * * * *
-CRON_DAILY=0 9 * * *
+REALTIME_INTERVAL_MIN=15
+DAILY_HOUR=9
+RUN_AT_START=true
 ```
 
 ## API REST

@@ -11,6 +11,8 @@ import sys
 import time
 import logging
 
+import requests
+
 from api.db import get_connection
 from collector import meteonetwork
 
@@ -117,31 +119,40 @@ def _insert(sql, values, kind):
         conn.close()
 
 
-def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("realtime", "daily"):
-        print("Uso: python -m collector.fetch [realtime|daily]", file=sys.stderr)
-        sys.exit(2)
+def run(kind):
+    """Recupera `kind` ('realtime'|'daily') per tutte le stazioni configurate.
+
+    Ogni stazione e' indipendente: un errore (incluso un rate limit 429) su una
+    non blocca le altre e non interrompe lo scheduler. Restituisce il numero di
+    stazioni fallite.
+    """
     codes = station_codes()
     if not codes:
         log.error("Nessuna stazione configurata (STATION_CODES)")
-        sys.exit(1)
+        return 1
 
-    kind = sys.argv[1]
     save = save_realtime if kind == "realtime" else save_daily
-
-    # Ogni stazione e' indipendente: un errore su una non blocca le altre.
     failures = 0
     for i, code in enumerate(codes):
         if i:
             time.sleep(INTER_STATION_DELAY)
         try:
             save(code)
+        except requests.HTTPError as e:
+            failures += 1
+            # 429/4xx/5xx: log conciso, niente traceback (rumore inutile)
+            log.warning("Fetch %s %s non riuscito: %s", kind, code, e)
         except Exception:
             failures += 1
             log.exception("Fetch %s fallito per la stazione %s", kind, code)
+    return failures
 
-    if failures:
-        sys.exit(1)
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] not in ("realtime", "daily"):
+        print("Uso: python -m collector.fetch [realtime|daily]", file=sys.stderr)
+        sys.exit(2)
+    sys.exit(1 if run(sys.argv[1]) else 0)
 
 
 if __name__ == "__main__":
