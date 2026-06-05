@@ -66,23 +66,37 @@ def save_realtime(station_code):
     _insert(sql, values, f"realtime/{station_code}")
 
 
-def save_daily(station_code):
-    data = meteonetwork.data_daily(station_code)
-    obs_date = data.get("observation_date")
-
-    # Evita duplicati: salta se la giornata e' gia' stata salvata.
+def daily_exists(station_code, obs_date):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT 1 FROM daily_rolando WHERE observation_date=%s AND station_code=%s LIMIT 1",
-                (obs_date, data.get("station_code")),
+                (obs_date, station_code),
             )
-            if cur.fetchone():
-                log.info("Dati daily del %s gia' presenti, salto.", obs_date)
-                return
+            return cur.fetchone() is not None
     finally:
         conn.close()
+
+
+def save_daily(station_code, observation_date=None):
+    """Salva i dati giornalieri. Con `observation_date` recupera quel giorno
+    specifico (backfill storico). Ritorna 'saved', 'skipped' o 'empty'."""
+    # Per il backfill evitiamo la chiamata API se il giorno c'e' gia'.
+    if observation_date and daily_exists(station_code, observation_date):
+        log.info("Dati daily %s del %s gia' presenti, salto.", station_code, observation_date)
+        return "skipped"
+
+    data = meteonetwork.data_daily(station_code, observation_date)
+    if not data:
+        log.info("Nessun dato daily per %s in data %s.", station_code, observation_date)
+        return "empty"
+    obs_date = data.get("observation_date")
+
+    # Evita duplicati: salta se la giornata e' gia' stata salvata.
+    if daily_exists(data.get("station_code"), obs_date):
+        log.info("Dati daily del %s gia' presenti, salto.", obs_date)
+        return "skipped"
 
     sql = """
         INSERT INTO daily_rolando (
@@ -102,6 +116,7 @@ def save_daily(station_code):
         _f(data.get("uv_med")), _f(data.get("uv_max")),
     )
     _insert(sql, values, f"daily/{station_code}")
+    return "saved"
 
 
 def _insert(sql, values, kind):

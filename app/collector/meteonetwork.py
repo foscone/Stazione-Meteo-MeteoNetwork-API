@@ -48,13 +48,14 @@ def login() -> str:
     return token
 
 
-def _get(path: str) -> list | dict:
+def _get(path: str, params: dict | None = None) -> list | dict:
     """GET autenticata con retry automatico dopo refresh del token su 401."""
     token = _load_token()
     for attempt in range(2):
         resp = requests.get(
             f"{BASE_URL}{path}",
             headers={"Authorization": f"Bearer {token}"},
+            params=params or {},
             timeout=30,
         )
         if resp.status_code == 401 and attempt == 0:
@@ -71,6 +72,12 @@ def data_realtime(station_code: str) -> dict:
     return data[0] if isinstance(data, list) else data
 
 
-def data_daily(station_code: str) -> dict:
-    data = _get(f"/data-daily/{station_code}")
-    return data[0] if isinstance(data, list) else data
+def data_daily(station_code: str, observation_date: str | None = None) -> dict | None:
+    """Dati giornalieri della stazione. Se `observation_date` (YYYY-MM-DD) e'
+    fornita, restituisce il giorno richiesto (per il backfill storico); altrimenti
+    l'ultimo disponibile. Ritorna None se per quella data non ci sono dati."""
+    params = {"observation_date": observation_date} if observation_date else None
+    data = _get(f"/data-daily/{station_code}", params=params)
+    if isinstance(data, list):
+        return data[0] if data else None
+    return data or None

@@ -70,6 +70,35 @@ Ad ogni esecuzione il collector cicla su **tutte le stazioni** indicate in
 `STATION_CODES` (con una breve pausa tra una e l'altra per rispettare i rate
 limit). I dati sono presi dalle API MeteoNetwork (`/v3/data-realtime` e
 `/v3/data-daily`); ogni record è distinto dalla colonna `station_code`.
+
+### Etichette stazioni
+
+Il campo `place` dell'API può essere uguale per più stazioni (es. tutte
+"Padova"). Per distinguerle in dashboard si usano etichette da `STATION_LABELS`
+(`codice=Etichetta` separati da `;`):
+
+```
+STATION_LABELS=STAZIONE1=Padova - Centro;STAZIONE2=Palestro - Montecengio;STAZIONE3=Montà - Monitoraggio
+```
+
+### Backfill dello storico giornaliero
+
+Per le stazioni non presenti nel backup (Palestro, Montà) si può recuperare lo
+**storico daily** dall'API (un giorno per richiesta, `?observation_date=`).
+Lo **storico realtime non è recuperabile**: l'API espone solo l'istante corrente.
+
+L'endpoint daily ha un throttling di **5 richieste/minuto**, quindi il backfill è
+lento (~14s a richiesta). Lo script è idempotente e ripartibile (salta i giorni
+già presenti) e gestisce i 429 con attese progressive:
+
+```bash
+# tutte le stazioni configurate, dal 10/02/2025 a ieri
+docker compose exec collector python -m collector.backfill --start 2025-02-10
+
+# solo Palestro e Montà, intervallo specifico
+docker compose exec collector python -m collector.backfill \
+    --stations STAZIONE2,STAZIONE3 --start 2024-01-01 --end 2025-12-31
+```
 Il **token Bearer** viene letto da `.env`, salvato nel volume `collector_state`
 e **rigenerato automaticamente** con login email/password quando scade (HTTP 401).
 

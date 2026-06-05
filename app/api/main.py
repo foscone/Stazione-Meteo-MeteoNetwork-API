@@ -20,6 +20,24 @@ def configured_stations() -> list[str]:
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
+def station_labels() -> dict[str, str]:
+    """Etichette leggibili per stazione, da env STATION_LABELS.
+
+    Formato: 'codice=Etichetta;codice=Etichetta'. Usate per la dashboard
+    quando i dati API non bastano a distinguere le stazioni (es. il campo
+    'place' vale 'Padova' per piu' stazioni).
+    """
+    raw = os.environ.get("STATION_LABELS", "")
+    labels = {}
+    for part in raw.split(";"):
+        if "=" in part:
+            code, label = part.split("=", 1)
+            code, label = code.strip(), label.strip()
+            if code and label:
+                labels[code] = label
+    return labels
+
+
 def default_station() -> str | None:
     """Stazione di default: la prima configurata, o quella con piu' dati."""
     env = configured_stations()
@@ -68,24 +86,32 @@ def stations():
         ) x
         """
     )
+    labels = station_labels()
+
+    def name_for(code, db_name):
+        # Priorita': etichetta configurata > nome dai dati > codice
+        return labels.get(code) or db_name or code
+
     by_code = {r["station_code"]: r for r in rows}
     out, seen = [], set()
     # Prima le stazioni configurate, nel loro ordine
     for c in configured_stations():
         r = by_code.get(c)
-        out.append({"station_code": c, "name": (r["name"] if r and r["name"] else c)})
+        out.append({"station_code": c, "name": name_for(c, r["name"] if r else None)})
         seen.add(c)
     # Poi eventuali altre stazioni gia' nei dati
     for r in rows:
         if r["station_code"] not in seen:
             out.append({"station_code": r["station_code"],
-                        "name": r["name"] or r["station_code"]})
+                        "name": name_for(r["station_code"], r["name"])})
     return out
 
 
 @app.get("/api/station")
 def station(station: str | None = Query(None)):
-    """Metadati della stazione (ultima rilevazione daily)."""
+    """Metadati della stazione. Usa lo storico daily; se assente (stazione
+    senza dati daily) fa fallback all'ultima rilevazione realtime. Il nome
+    visualizzato usa l'etichetta configurata, se presente."""
     st = resolve_station(station)
     row = db.query_one(
         f"SELECT station_code, station_name, area, region_name, country, "
@@ -94,7 +120,18 @@ def station(station: str | None = Query(None)):
         (st,),
     )
     if not row:
-        return {"station_code": st}
+        # Nessuno storico daily: ricavo i metadati dal realtime piu' recente.
+        row = db.query_one(
+            "SELECT station_code, place AS station_name, area, region_name, "
+            "country, latitude, longitude, altitude FROM realtime_rolando "
+            "WHERE station_code = %s ORDER BY observation_time_local DESC LIMIT 1",
+            (st,),
+        )
+    label = station_labels().get(st)
+    if not row:
+        return {"station_code": st, "station_name": label or st}
+    if label:
+        row["station_name"] = label
     return row
 
 
