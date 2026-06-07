@@ -203,7 +203,25 @@ async function loadMonthly(metric) {
 
 // ---------- Tempo reale ----------
 async function loadRealtime() {
-  const rows = await apiS("/api/realtime?limit=500");
+  const start = document.getElementById("rt-start").value;
+  const end = document.getElementById("rt-end").value;
+
+  let path, rangeTxt;
+  if (start || end) {
+    const s = start || end;          // se ne manca una, uso l'altra (singolo giorno)
+    const e = end || start;
+    path = "/api/realtime?limit=5000"
+      + "&start=" + encodeURIComponent(s + " 00:00:00")
+      + "&end=" + encodeURIComponent(e + " 23:59:59");
+    rangeTxt = s === e ? `del ${dmy(s)}` : `dal ${dmy(s)} al ${dmy(e)}`;
+  } else {
+    path = "/api/realtime?limit=500";
+    rangeTxt = "recenti";
+  }
+
+  const rows = await apiS(path);
+  document.getElementById("rt-info").textContent =
+    rows.length ? `${rows.length} rilevazioni ${rangeTxt}` : `Nessun dato ${rangeTxt}`;
   const labels = rows.map((r) => dmTime(r.observation_time_local));
   makeChart("chart-rt-temp", {
     type: "line",
@@ -216,7 +234,7 @@ async function loadRealtime() {
       ],
     },
     options: {
-      plugins: { title: title("Temperatura / umidità recenti") },
+      plugins: { title: title(`Temperatura / umidità (${rangeTxt})`) },
       scales: {
         x: { ticks: { color: "#94a3b8", maxTicksLimit: 12 }, grid: { color: "#1e293b" } },
         y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
@@ -233,7 +251,7 @@ async function loadRealtime() {
         line("Raffica", rows.map((r) => r.wind_gust), "#f43f5e"),
       ],
     },
-    options: { plugins: { title: title("Vento recente (km/h)") } },
+    options: { plugins: { title: title(`Vento ${rangeTxt} (km/h)`) } },
   });
 }
 
@@ -296,6 +314,15 @@ async function main() {
   // Listener fissi (registrati una sola volta)
   document.getElementById("overview-year").addEventListener("change", (e) => loadOverview(e.target.value));
   document.getElementById("table-year").addEventListener("change", (e) => loadTable(e.target.value));
+
+  // Tempo reale: mostra intervallo scelto, oppure torna alle rilevazioni recenti
+  document.getElementById("rt-show").addEventListener("click", loadRealtime);
+  document.getElementById("rt-recent").addEventListener("click", () => {
+    document.getElementById("rt-start").value = "";
+    document.getElementById("rt-end").value = "";
+    loadRealtime();
+  });
+
   await setupMetricSelect();
 
   await reloadStation();

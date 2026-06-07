@@ -53,7 +53,11 @@
   <!-- TEMPO REALE -->
   <section id="realtime" class="panel">
     <div class="toolbar">
-      <span class="hint">Ultime rilevazioni (ogni 15 minuti)</span>
+      <label>Dal <input type="date" id="rt-start" /></label>
+      <label>Al <input type="date" id="rt-end" /></label>
+      <button id="rt-show" class="btn">Mostra</button>
+      <button id="rt-recent" class="btn btn-ghost">Recenti</button>
+      <span id="rt-info" class="hint">Ultime rilevazioni (ogni 15 minuti)</span>
     </div>
     <div class="chart-box"><canvas id="chart-rt-temp"></canvas></div>
     <div class="chart-box"><canvas id="chart-rt-wind"></canvas></div>

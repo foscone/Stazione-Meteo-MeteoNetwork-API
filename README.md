@@ -135,7 +135,9 @@ Quattro sezioni:
 
 1. **Andamento giornaliero** — temperature (min/med/max) e pioggia per anno.
 2. **Confronto annate** — stessa metrica sovrapposta per giorno dell'anno + barre mensili.
-3. **Tempo reale** — temperatura, umidità e vento delle ultime rilevazioni.
+3. **Tempo reale** — temperatura, umidità e vento delle ultime rilevazioni;
+   con i campi *Dal/Al* si consulta il dettaglio a 15 minuti di un giorno o
+   intervallo passato, *Recenti* torna alla vista live.
 4. **Tabella dati** — dati giornalieri in forma tabellare.
 
 ## Sicurezza / git

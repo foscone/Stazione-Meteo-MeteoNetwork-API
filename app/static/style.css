@@ -83,6 +83,33 @@ select {
   font-size: .9rem;
 }
 .hint { color: var(--muted); font-size: .85rem; }
+input[type="date"] {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .3rem .5rem;
+  font-size: .9rem;
+  color-scheme: dark;
+}
+.btn {
+  background: var(--accent);
+  color: #06283a;
+  border: none;
+  border-radius: 6px;
+  padding: .4rem .9rem;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.btn-ghost:hover { color: var(--text); }
 .checks { display: flex; flex-wrap: wrap; gap: .8rem; }
 .checks label { color: var(--text); }
 
