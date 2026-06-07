@@ -161,5 +161,8 @@ tbody tr:hover { background: var(--panel-2); }
   background: var(--panel-2);
 }
 .photos-empty { color: var(--muted); padding: 2rem; text-align: center; }
+.detail-toggle { margin-top: .9rem; }
+.photo-detail { margin-top: .8rem; }
+.photo-detail .detail-box { height: 260px; }
 
 .footer { padding: 1.2rem 1.6rem; color: var(--muted); font-size: .8rem; text-align: center; }

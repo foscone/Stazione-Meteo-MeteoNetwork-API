@@ -148,6 +148,11 @@ scatto e le mostra nella scheda **Foto** raggruppate per **fascia oraria**
 stazione selezionata: la rilevazione *realtime* più vicina (entro ±2 ore) oppure,
 in mancanza, il riepilogo giornaliero.
 
+Quando per una foto è disponibile il dato dettagliato, un pulsante **Dettaglio
+meteo 48h** apre i grafici a 15 minuti (temperatura/umidità, precipitazioni,
+vento) nella finestra **48 ore prima → qualche ora dopo** lo scatto, con una
+linea verticale 📷 sull'istante della foto.
+
 - Formati: `.jpg`, `.jpeg`, `.png`, `.tiff`, `.webp`.
 - Senza data EXIF si usa la data di modifica del file.
 - Le immagini **non** vengono versionate in git.

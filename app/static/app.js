@@ -17,6 +17,31 @@ const apiS = (p) => api(apiUrl(p));
 const charts = {};
 const YEAR_COLORS = ["#38bdf8", "#f97316", "#a78bfa", "#34d399", "#f43f5e", "#fbbf24"];
 
+// Plugin: linea verticale tratteggiata sull'istante della foto nei grafici di dettaglio
+const photoMarker = {
+  id: "photoMarker",
+  afterDatasetsDraw(chart, _args, opts) {
+    const idx = opts && opts.index;
+    if (idx == null || idx < 0) return;
+    const x = chart.scales.x.getPixelForValue(idx);
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.strokeStyle = "#fbbf24";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#fbbf24";
+    ctx.font = "12px sans-serif";
+    ctx.fillText("📷", x - 8, top + 12);
+    ctx.restore();
+  },
+};
+
 function makeChart(id, config) {
   if (charts[id]) charts[id].destroy();
   const ctx = document.getElementById(id);
@@ -300,13 +325,20 @@ function renderPhotoEvent(ev) {
     `<img loading="lazy" src="${p.url}" alt="${p.file}"></a>`
   ).join("");
   const count = ev.photos.length;
+  const safeId = ev.hour.replace(/[^0-9]/g, "");
+  const hasDetail = ev.weather && ev.weather.source === "realtime";
+  const detailUI = hasDetail
+    ? `<button class="btn btn-ghost detail-toggle" data-hour="${ev.hour}" data-target="pd-${safeId}">📈 Dettaglio meteo 48h</button>
+       <div class="photo-detail" id="pd-${safeId}" hidden></div>`
+    : "";
   return `<div class="photo-event">
     <div class="photo-event-head">
       <span class="photo-event-hour">📅 ${hourLabel}</span>
       <span class="photo-event-weather">${weatherSummary(ev.weather)}</span>
-      <span class="hint">${count} ${count === 1 ? "foto" : "foto"}</span>
+      <span class="hint">${count} foto</span>
     </div>
     <div class="photo-thumbs">${thumbs}</div>
+    ${detailUI}
   </div>`;
 }
 
@@ -325,6 +357,101 @@ function weatherSummary(w) {
   // riepilogo giornaliero (nessuna rilevazione realtime vicina)
   return `🌡 min ${fmt(w.t_min)} / med ${fmt(w.t_med)} / max ${fmt(w.t_max)} °C` +
     ` · 🌧 ${fmt(w.rain, " mm")} <span class="src">(dato giornaliero)</span>`;
+}
+
+// "2025-03-15T14:00:00" + ore -> "2025-03-15 12:00:00" (orario locale, formato API)
+function shiftHour(iso, deltaHours) {
+  const d = new Date(iso);
+  d.setHours(d.getHours() + deltaHours);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+         `${p(d.getHours())}:${p(d.getMinutes())}:00`;
+}
+
+// Grafico di dettaglio con linea-marker sull'istante della foto
+function detailChart(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), {
+    type: cfg.type,
+    data: cfg.data,
+    plugins: [photoMarker],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: "#e2e8f0" } },
+        title: title(cfg.title),
+        photoMarker: { index: cfg.markerIndex },
+      },
+      scales: Object.assign({
+        x: { ticks: { color: "#94a3b8", maxTicksLimit: 10 }, grid: { color: "#1e293b" } },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+      }, cfg.extraScales || {}),
+    },
+  });
+}
+
+async function loadPhotoDetail(hour, container) {
+  const start = shiftHour(hour, -48);   // 48 ore prima
+  const end = shiftHour(hour, 6);       // qualche ora dopo
+  let rows;
+  try {
+    rows = await apiS(`/api/realtime?limit=1000` +
+      `&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+  } catch (e) {
+    container.innerHTML = `<div class="photos-empty">Errore nel caricamento del dettaglio.</div>`;
+    return;
+  }
+  if (!rows.length) {
+    container.innerHTML = `<div class="photos-empty">Dettaglio meteo non disponibile per questo periodo.</div>`;
+    return;
+  }
+
+  const sid = hour.replace(/[^0-9]/g, "");
+  container.innerHTML =
+    `<div class="chart-box detail-box"><canvas id="pdt-${sid}"></canvas></div>` +
+    `<div class="chart-box detail-box"><canvas id="pdr-${sid}"></canvas></div>` +
+    `<div class="chart-box detail-box"><canvas id="pdw-${sid}"></canvas></div>`;
+
+  const labels = rows.map((r) => dmTime(r.observation_time_local));
+  // indice della rilevazione più vicina all'ora della foto (per il marker)
+  const hourTime = new Date(hour).getTime();
+  let idx = 0, best = Infinity;
+  rows.forEach((r, i) => {
+    const d = Math.abs(new Date(r.observation_time_local).getTime() - hourTime);
+    if (d < best) { best = d; idx = i; }
+  });
+
+  detailChart(`pdt-${sid}`, {
+    type: "line",
+    title: "Temperatura / umidità (48h prima → dopo)",
+    markerIndex: idx,
+    data: { labels, datasets: [
+      line("Temperatura", rows.map((r) => r.temperature), "#f97316"),
+      line("Punto di rugiada", rows.map((r) => r.dew_point), "#38bdf8"),
+      { ...line("Umidità %", rows.map((r) => r.rh), "#34d399"), yAxisID: "y1" },
+    ] },
+    extraScales: { y1: { position: "right", min: 0, max: 100,
+      ticks: { color: "#34d399" }, grid: { drawOnChartArea: false } } },
+  });
+  detailChart(`pdr-${sid}`, {
+    type: "bar",
+    title: "Precipitazioni (mm/h)",
+    markerIndex: idx,
+    data: { labels, datasets: [
+      { label: "Precipitazioni (mm/h)", data: rows.map((r) => r.rain_rate), backgroundColor: "#34d399" },
+    ] },
+  });
+  detailChart(`pdw-${sid}`, {
+    type: "line",
+    title: "Vento (km/h)",
+    markerIndex: idx,
+    data: { labels, datasets: [
+      line("Vento", rows.map((r) => r.wind_speed), "#38bdf8"),
+      line("Raffica", rows.map((r) => r.wind_gust), "#f43f5e"),
+    ] },
+  });
 }
 
 // ---------- Ricarica tutto per la stazione selezionata ----------
@@ -373,6 +500,25 @@ async function main() {
     document.getElementById("rt-start").value = "";
     document.getElementById("rt-end").value = "";
     loadRealtime();
+  });
+
+  // Foto: apertura/chiusura del dettaglio meteo 48h (caricato alla prima apertura)
+  document.getElementById("photos-gallery").addEventListener("click", (e) => {
+    const btn = e.target.closest(".detail-toggle");
+    if (!btn) return;
+    const container = document.getElementById(btn.dataset.target);
+    if (container.hidden) {
+      container.hidden = false;
+      btn.textContent = "📉 Nascondi dettaglio";
+      if (!container.dataset.loaded) {
+        container.dataset.loaded = "1";
+        container.innerHTML = `<div class="photos-empty">Caricamento…</div>`;
+        loadPhotoDetail(btn.dataset.hour, container);
+      }
+    } else {
+      container.hidden = true;
+      btn.textContent = "📈 Dettaglio meteo 48h";
+    }
   });
 
   await setupMetricSelect();
