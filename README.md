@@ -1,5 +1,9 @@
 # Meteo Dashboard
 
+> Dashboard Docker che raccoglie in automatico i dati di alcune stazioni
+> [MeteoNetwork](https://www.meteonetwork.it) (storico + tempo reale) e li
+> mostra in tabelle e grafici, con confronto tra annate.
+
 Dashboard meteo per **più stazioni** MeteoNetwork: visualizza i dati storici e
 in tempo reale in forma tabellare e con grafici, permette di **confrontare le
 annate** tra loro e di passare da una stazione all'altra con un selettore.
