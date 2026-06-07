@@ -1,6 +1,6 @@
 # Meteo Dashboard
 
-> Dashboard Docker che raccoglie in automatico i dati di alcune stazioni
+> Dashboard Docker che raccoglie in automatico i dati di una o più stazioni
 > [MeteoNetwork](https://www.meteonetwork.it) (storico + tempo reale) e li
 > mostra in tabelle e grafici, con confronto tra annate.
 
@@ -8,16 +8,10 @@ Dashboard meteo per **più stazioni** MeteoNetwork: visualizza i dati storici e
 in tempo reale in forma tabellare e con grafici, permette di **confrontare le
 annate** tra loro e di passare da una stazione all'altra con un selettore.
 
-Stazioni monitorate di default (configurabili in `.env`):
-
-| Codice   | Stazione                  |
-|----------|---------------------------|
-| `STAZIONE1` | Padova - Centro           |
-| `STAZIONE2` | Palestro - Montecengio    |
-| `STAZIONE3` | Padova - Montà            |
-
-Lo storico nel backup riguarda solo `STAZIONE1`; per le altre stazioni i dati
-vengono raccolti dal collector a partire dal primo avvio.
+Le stazioni da monitorare si configurano in `.env` tramite i loro codici
+MeteoNetwork (vedi `STATION_CODES`). Lo storico iniziale può essere ripristinato
+da un dump del database; le nuove rilevazioni vengono poi raccolte in automatico
+dal collector.
 
 Il progetto è completamente dockerizzato e composto da tre servizi:
 
@@ -25,7 +19,7 @@ Il progetto è completamente dockerizzato e composto da tre servizi:
 |-------------|-----------------------------------------------------------------------|
 | `db`        | MariaDB 10.5 con lo storico ripristinato dal backup                   |
 | `web`       | API REST (FastAPI) + dashboard web statica                            |
-| `collector` | Recupera in automatico i nuovi dati dalle API MeteoNetwork via cron   |
+| `collector` | Recupera in automatico i nuovi dati dalle API MeteoNetwork            |
 
 ## Avvio rapido
 
@@ -33,10 +27,9 @@ Il progetto è completamente dockerizzato e composto da tre servizi:
 # 1. Configura i segreti
 cp .env.example .env        # poi modifica i valori in .env
 
-# 2. (Opzionale) Ripristina lo storico dal backup
-#    Copia il dump SQL del backup del database in db/init/02-data.sql
+# 2. (Opzionale) Ripristina lo storico da un dump del database
+#    Copia il tuo dump SQL in db/init/02-data.sql
 #    Viene caricato automaticamente SOLO al primo avvio (volume vuoto).
-cp backup/meteo-*.sql db/init/02-data.sql
 
 # 3. Avvia tutto
 docker compose up -d --build
@@ -47,8 +40,8 @@ configurabile con `WEB_PORT`).
 
 ## Ripristino dei dati storici
 
-Il backup del backup del database (cartella `backup/`, ignorata da git)
-contiene un dump MariaDB con le tabelle `daily_rolando` e `realtime_rolando`.
+Un dump MariaDB con le tabelle `daily_rolando` e `realtime_rolando` può essere
+usato per ripristinare lo storico.
 
 - Lo **schema** è versionato in [db/init/01-schema.sql](db/init/01-schema.sql)
   e crea le tabelle vuote: il progetto parte funzionante anche senza backup.
@@ -77,18 +70,18 @@ limit). I dati sono presi dalle API MeteoNetwork (`/v3/data-realtime` e
 
 ### Etichette stazioni
 
-Il campo `place` dell'API può essere uguale per più stazioni (es. tutte
-"Padova"). Per distinguerle in dashboard si usano etichette da `STATION_LABELS`
-(`codice=Etichetta` separati da `;`):
+Il campo `place` dell'API può essere uguale per più stazioni. Per distinguerle in
+dashboard si usano etichette da `STATION_LABELS` (`codice=Etichetta` separati da
+`;`):
 
 ```
-STATION_LABELS=STAZIONE1=Padova - Centro;STAZIONE2=Palestro - Montecengio;STAZIONE3=Montà - Monitoraggio
+STATION_LABELS=codice_stazione_1=La mia stazione;codice_stazione_2=Altra stazione
 ```
 
 ### Backfill dello storico giornaliero
 
-Per le stazioni non presenti nel backup (Palestro, Montà) si può recuperare lo
-**storico daily** dall'API (un giorno per richiesta, `?observation_date=`).
+Per le stazioni non presenti nel backup si può recuperare lo **storico daily**
+dall'API (un giorno per richiesta, `?observation_date=`).
 Lo **storico realtime non è recuperabile**: l'API espone solo l'istante corrente.
 
 L'endpoint daily ha un throttling di **5 richieste/minuto**, quindi il backfill è
@@ -99,17 +92,18 @@ già presenti) e gestisce i 429 con attese progressive:
 # tutte le stazioni configurate, dal 10/02/2025 a ieri
 docker compose exec collector python -m collector.backfill --start 2025-02-10
 
-# solo Palestro e Montà, intervallo specifico
+# solo alcune stazioni, intervallo specifico
 docker compose exec collector python -m collector.backfill \
-    --stations STAZIONE2,STAZIONE3 --start 2024-01-01 --end 2025-12-31
+    --stations codice_stazione_1,codice_stazione_2 --start 2024-01-01 --end 2025-12-31
 ```
+
 Il **token Bearer** viene letto da `.env`, salvato nel volume `collector_state`
 e **rigenerato automaticamente** con login email/password quando scade (HTTP 401).
 
 Pianificazione e stazioni si configurano da `.env`:
 
 ```
-STATION_CODES=STAZIONE1,STAZIONE2,STAZIONE3
+STATION_CODES=codice_stazione_1,codice_stazione_2
 REALTIME_INTERVAL_MIN=15
 DAILY_HOUR=9
 RUN_AT_START=true
@@ -146,6 +140,6 @@ Quattro sezioni:
 
 ## Sicurezza / git
 
-- `.env` e l'intera cartella `backup/` sono in [.gitignore](.gitignore).
+- `.env` (con le credenziali e i codici stazione reali) è in [.gitignore](.gitignore).
 - Il dump dei dati (`db/init/02-data.sql`) **non** viene versionato.
 - In repo c'è solo `.env.example` con placeholder.

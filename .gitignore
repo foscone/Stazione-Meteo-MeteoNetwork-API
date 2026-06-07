@@ -1,10 +1,11 @@
-# Dati del backup del database (backup, dump, credenziali originali) - mai versionare
-backup/
-
 # Variabili d'ambiente / segreti
 .env
 *.env
 !.env.example
+
+# Backup/dati locali non versionati
+backup/
+*.bak
 
 # Dump/seed del database (dati, generati localmente - troppo grandi/non da versionare)
 db/seed/

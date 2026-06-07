@@ -11,7 +11,7 @@ L'API ha un throttling di 5 richieste/minuto sul daily: di default attendiamo
 
 Uso (dentro il container collector):
     python -m collector.backfill --start 2025-02-10
-    python -m collector.backfill --stations STAZIONE2,STAZIONE3 --start 2024-01-01 --end 2025-12-31
+    python -m collector.backfill --stations codice_stazione_1,codice_stazione_2 --start 2024-01-01 --end 2025-12-31
 """
 import os
 import sys
