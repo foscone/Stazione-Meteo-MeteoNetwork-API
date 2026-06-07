@@ -275,12 +275,64 @@ async function loadTable(year) {
   document.getElementById("table-count").textContent = `${rows.length} giorni`;
 }
 
+// ---------- Foto ----------
+async function loadPhotos() {
+  const g = document.getElementById("photos-gallery");
+  let data;
+  try {
+    data = await apiS("/api/photos");
+  } catch (e) {
+    g.innerHTML = `<div class="photos-empty">Errore nel caricamento delle foto.</div>`;
+    return;
+  }
+  if (!data.count) {
+    g.innerHTML = `<div class="photos-empty">Nessuna foto trovata. Aggiungi immagini nella cartella <code>photos/</code> del progetto.</div>`;
+    return;
+  }
+  g.innerHTML = data.events.map(renderPhotoEvent).join("");
+}
+
+function renderPhotoEvent(ev) {
+  const hh = ev.hour.slice(11, 13);
+  const hourLabel = `${dmy(ev.hour)} · ${hh}:00–${hh}:59`;
+  const thumbs = ev.photos.map((p) =>
+    `<a href="${p.url}" target="_blank" title="${p.file} — ${dmyTime(p.taken_at)}">` +
+    `<img loading="lazy" src="${p.url}" alt="${p.file}"></a>`
+  ).join("");
+  const count = ev.photos.length;
+  return `<div class="photo-event">
+    <div class="photo-event-head">
+      <span class="photo-event-hour">📅 ${hourLabel}</span>
+      <span class="photo-event-weather">${weatherSummary(ev.weather)}</span>
+      <span class="hint">${count} ${count === 1 ? "foto" : "foto"}</span>
+    </div>
+    <div class="photo-thumbs">${thumbs}</div>
+  </div>`;
+}
+
+function weatherSummary(w) {
+  if (!w) return '<span class="src">dati meteo non disponibili per questo orario</span>';
+  if (w.source === "realtime") {
+    const parts = [
+      `🌡 ${fmt(w.temperature, "°C")}`,
+      `💧 ${fmt(w.rh, "%")}`,
+      `💨 ${fmt(w.wind_speed, " km/h")}${w.wind_direction ? " " + w.wind_direction : ""}`,
+    ];
+    if (w.rain_rate != null && w.rain_rate > 0) parts.push(`🌧 ${fmt(w.rain_rate, " mm/h")}`);
+    return parts.join(" · ") +
+      ` <span class="src">(rilevazione ${dmTime(w.observation_time_local)})</span>`;
+  }
+  // riepilogo giornaliero (nessuna rilevazione realtime vicina)
+  return `🌡 min ${fmt(w.t_min)} / med ${fmt(w.t_med)} / max ${fmt(w.t_max)} °C` +
+    ` · 🌧 ${fmt(w.rain, " mm")} <span class="src">(dato giornaliero)</span>`;
+}
+
 // ---------- Ricarica tutto per la stazione selezionata ----------
 async function reloadStation() {
   const ovSel = document.getElementById("overview-year");
   const tbSel = document.getElementById("table-year");
 
-  await Promise.all([loadStation(), loadLatest(), loadRealtime()]);
+  await Promise.all([loadStation(), loadLatest(), loadRealtime(), loadPhotos()]);
 
   STATE.years = await apiS("/api/years");
   const opts = STATE.years.map((y) => `<option value="${y}">${y}</option>`).join("");

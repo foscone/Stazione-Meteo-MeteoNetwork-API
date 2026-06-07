@@ -137,6 +137,21 @@ Quattro sezioni:
    con i campi *Dal/Al* si consulta il dettaglio a 15 minuti di un giorno o
    intervallo passato, *Recenti* torna alla vista live.
 4. **Tabella dati** — dati giornalieri in forma tabellare.
+5. **Foto** — galleria delle foto con il meteo del momento dello scatto.
+
+## Foto con meteo dello scatto
+
+Trascinando immagini nella cartella [photos/](photos/) (montata nel container
+`web`), il sistema ne legge i **metadati EXIF** per ricavare la data/ora di
+scatto e le mostra nella scheda **Foto** raggruppate per **fascia oraria**
+(intervalli di un'ora). Per ogni gruppo viene associato il **meteo** della
+stazione selezionata: la rilevazione *realtime* più vicina (entro ±2 ore) oppure,
+in mancanza, il riepilogo giornaliero.
+
+- Formati: `.jpg`, `.jpeg`, `.png`, `.tiff`, `.webp`.
+- Senza data EXIF si usa la data di modifica del file.
+- Le immagini **non** vengono versionate in git.
+- Endpoint: `GET /api/photos?station=<codice>`.
 
 ## Sicurezza / git
 

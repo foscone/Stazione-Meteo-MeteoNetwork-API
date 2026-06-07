@@ -34,9 +34,13 @@ services:
       DB_PASS: ${MYSQL_PASSWORD}
       STATION_CODES: ${STATION_CODES}
       STATION_LABELS: ${STATION_LABELS}
+      PHOTOS_DIR: /app/photos
       TZ: ${TZ}
     ports:
       - "${WEB_PORT}:8000"
+    volumes:
+      # Cartella foto caricate dall'utente (sola lettura per il container)
+      - ./photos:/app/photos:ro
     depends_on:
       db:
         condition: service_healthy

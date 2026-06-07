@@ -7,6 +7,11 @@
 backup/
 *.bak
 
+# Foto caricate dall'utente (non versionare le immagini, solo la cartella)
+photos/*
+!photos/.gitkeep
+!photos/README.md
+
 # Dump/seed del database (dati, generati localmente - troppo grandi/non da versionare)
 db/seed/
 db/init/02-data.sql

@@ -1,6 +1,8 @@
 """API REST della dashboard meteo + serving del frontend statico."""
 import os
 from pathlib import Path
+from datetime import timedelta
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -8,10 +10,12 @@ from fastapi.staticfiles import StaticFiles
 
 from . import db
 from .queries import DAILY_DEDUP, METRICS
+from .photos import index_photos
 
-app = FastAPI(title="Meteo Dashboard", version="1.1")
+app = FastAPI(title="Meteo Dashboard", version="1.2")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+PHOTOS_DIR = Path(os.environ.get("PHOTOS_DIR", "/app/photos"))
 
 
 def configured_stations() -> list[str]:
@@ -293,5 +297,73 @@ def metrics():
     return [{"key": k, **v} for k, v in METRICS.items()]
 
 
-# Frontend statico (montato per ultimo cosi' /api/* ha la precedenza)
+def weather_at(st, hour_dt):
+    """Meteo associato a una fascia oraria per la stazione `st`.
+
+    Cerca la rilevazione realtime piu' vicina entro ±2 ore; se non c'e',
+    ripiega sul riepilogo giornaliero di quella data.
+    """
+    mid = hour_dt + timedelta(minutes=30)
+    lo = hour_dt - timedelta(hours=2)
+    hi = hour_dt + timedelta(hours=3)
+    rt = db.query_one(
+        "SELECT observation_time_local, temperature, rh, dew_point, smlp, "
+        "wind_speed, wind_gust, wind_direction, rain_rate, daily_rain, "
+        "ABS(TIMESTAMPDIFF(SECOND, observation_time_local, %s)) AS diff "
+        "FROM realtime_rolando "
+        "WHERE station_code = %s AND observation_time_local BETWEEN %s AND %s "
+        "ORDER BY diff ASC LIMIT 1",
+        (mid.strftime("%Y-%m-%d %H:%M:%S"), st,
+         lo.strftime("%Y-%m-%d %H:%M:%S"), hi.strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    if rt:
+        rt.pop("diff", None)
+        rt["source"] = "realtime"
+        return rt
+
+    d = db.query_one(
+        f"SELECT observation_date, t_min, t_med, t_max, rh_med, slpres, "
+        f"w_med, w_max, w_dir, rain FROM ({DAILY_DEDUP}) t "
+        f"WHERE station_code = %s AND observation_date = %s LIMIT 1",
+        (st, hour_dt.strftime("%Y-%m-%d")),
+    )
+    if d:
+        d["source"] = "daily"
+        return d
+    return None
+
+
+@app.get("/api/photos")
+def photos(station: str | None = Query(None)):
+    """Foto della cartella montata, raggruppate per fascia oraria (1 ora),
+    con il meteo della stazione selezionata in quel momento."""
+    st = resolve_station(station)
+    items = index_photos(PHOTOS_DIR)
+
+    buckets: dict = {}
+    for it in items:
+        hour = it["taken_at"].replace(minute=0, second=0, microsecond=0)
+        buckets.setdefault(hour, []).append(it)
+
+    events = []
+    for hour in sorted(buckets, reverse=True):  # piu' recenti per primi
+        ph = sorted(buckets[hour], key=lambda x: x["taken_at"])
+        events.append({
+            "hour": hour.strftime("%Y-%m-%dT%H:%M:%S"),
+            "photos": [{
+                "file": p["file"],
+                "url": f"/photos/{quote(p['file'])}",
+                "taken_at": p["taken_at"].strftime("%Y-%m-%dT%H:%M:%S"),
+                "has_exif": p["has_exif"],
+            } for p in ph],
+            "weather": weather_at(st, hour),
+        })
+
+    return {"station": st, "count": len(items), "events": events}
+
+
+# File statici: le foto caricate dall'utente e il frontend.
+# L'ordine conta: /api/* (sopra) e /photos hanno la precedenza sul catch-all "/".
+if PHOTOS_DIR.is_dir():
+    app.mount("/photos", StaticFiles(directory=str(PHOTOS_DIR)), name="photos")
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

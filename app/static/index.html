@@ -24,6 +24,7 @@
     <button class="tab" data-tab="compare">Confronto annate</button>
     <button class="tab" data-tab="realtime">Tempo reale</button>
     <button class="tab" data-tab="table">Tabella dati</button>
+    <button class="tab" data-tab="photos">Foto</button>
   </nav>
 
   <!-- ANDAMENTO GIORNALIERO -->
@@ -74,6 +75,14 @@
     <div class="table-wrap">
       <table id="daily-table"></table>
     </div>
+  </section>
+
+  <!-- FOTO -->
+  <section id="photos" class="panel">
+    <div class="toolbar">
+      <span class="hint">Carica le foto nella cartella <code>photos/</code> del progetto: vengono raggruppate per ora di scatto (EXIF) con il meteo del momento.</span>
+    </div>
+    <div id="photos-gallery" class="photos-gallery"></div>
   </section>
 
   <footer class="footer">Dati: MeteoNetwork · aggiornamento automatico ogni 15 min</footer>
