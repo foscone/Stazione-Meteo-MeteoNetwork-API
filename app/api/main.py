@@ -335,31 +335,40 @@ def weather_at(st, hour_dt):
 
 @app.get("/api/photos")
 def photos(station: str | None = Query(None)):
-    """Foto della cartella montata, raggruppate per fascia oraria (1 ora),
-    con il meteo della stazione selezionata in quel momento."""
+    """Foto della cartella montata (e sue sottocartelle), raggruppate prima per
+    cartella (il nome è il titolo) e poi per fascia oraria (1 ora), con il meteo
+    della stazione selezionata in quel momento."""
     st = resolve_station(station)
     items = index_photos(PHOTOS_DIR)
 
-    buckets: dict = {}
+    # cartella -> ora -> lista foto
+    folders: dict = {}
     for it in items:
         hour = it["taken_at"].replace(minute=0, second=0, microsecond=0)
-        buckets.setdefault(hour, []).append(it)
+        folders.setdefault(it["folder"], {}).setdefault(hour, []).append(it)
 
-    events = []
-    for hour in sorted(buckets, reverse=True):  # piu' recenti per primi
-        ph = sorted(buckets[hour], key=lambda x: x["taken_at"])
-        events.append({
-            "hour": hour.strftime("%Y-%m-%dT%H:%M:%S"),
-            "photos": [{
-                "file": p["file"],
-                "url": f"/photos/{quote(p['file'])}",
-                "taken_at": p["taken_at"].strftime("%Y-%m-%dT%H:%M:%S"),
-                "has_exif": p["has_exif"],
-            } for p in ph],
-            "weather": weather_at(st, hour),
-        })
+    # sottocartelle in ordine alfabetico, la radice ("") per ultima
+    def folder_key(name):
+        return (name == "", name.lower())
 
-    return {"station": st, "count": len(items), "events": events}
+    groups = []
+    for folder in sorted(folders, key=folder_key):
+        events = []
+        for hour in sorted(folders[folder], reverse=True):  # più recenti per primi
+            ph = sorted(folders[folder][hour], key=lambda x: x["taken_at"])
+            events.append({
+                "hour": hour.strftime("%Y-%m-%dT%H:%M:%S"),
+                "photos": [{
+                    "file": p["file"],
+                    "url": "/photos/" + quote(p["rel"], safe="/"),
+                    "taken_at": p["taken_at"].strftime("%Y-%m-%dT%H:%M:%S"),
+                    "has_exif": p["has_exif"],
+                } for p in ph],
+                "weather": weather_at(st, hour),
+            })
+        groups.append({"folder": folder, "events": events})
+
+    return {"station": st, "count": len(items), "groups": groups}
 
 
 # File statici: le foto caricate dall'utente e il frontend.

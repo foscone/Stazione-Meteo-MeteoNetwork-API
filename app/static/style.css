@@ -132,7 +132,15 @@ th:first-child, td:first-child { text-align: left; }
 tbody tr:hover { background: var(--panel-2); }
 
 /* Galleria foto */
-.photos-gallery { display: flex; flex-direction: column; gap: 1rem; }
+.photos-gallery { display: flex; flex-direction: column; gap: 1.4rem; }
+.photo-folder { display: flex; flex-direction: column; gap: 1rem; }
+.photo-folder-title {
+  color: var(--text);
+  font-size: 1.1rem;
+  margin: 0;
+  border-left: 3px solid var(--accent);
+  padding-left: .6rem;
+}
 .photo-event {
   background: var(--panel);
   border: 1px solid var(--border);

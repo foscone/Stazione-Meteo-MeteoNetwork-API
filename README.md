@@ -143,10 +143,12 @@ Quattro sezioni:
 
 Trascinando immagini nella cartella [photos/](photos/) (montata nel container
 `web`), il sistema ne legge i **metadati EXIF** per ricavare la data/ora di
-scatto e le mostra nella scheda **Foto** raggruppate per **fascia oraria**
-(intervalli di un'ora). Per ogni gruppo viene associato il **meteo** della
-stazione selezionata: la rilevazione *realtime* più vicina (entro ±2 ore) oppure,
-in mancanza, il riepilogo giornaliero.
+scatto e le mostra nella scheda **Foto**. Le foto vengono raggruppate prima per
+**cartella** (il nome della sottocartella diventa il titolo del gruppo; le foto
+nella radice non hanno titolo) e poi per **fascia oraria** (intervalli di un'ora).
+Per ogni gruppo orario viene associato il **meteo** della stazione selezionata:
+la rilevazione *realtime* più vicina (entro ±2 ore) oppure, in mancanza, il
+riepilogo giornaliero.
 
 Quando per una foto è disponibile il dato dettagliato, un pulsante **Dettaglio
 meteo 48h** apre i grafici a 15 minuti (temperatura/umidità, precipitazioni,
@@ -163,3 +165,30 @@ linea verticale 📷 sull'istante della foto.
 - `.env` (con le credenziali e i codici stazione reali) è in [.gitignore](.gitignore).
 - Il dump dei dati (`db/init/02-data.sql`) **non** viene versionato.
 - In repo c'è solo `.env.example` con placeholder.
+
+## LOG
+
+```
+# log del collector (è il servizio che recupera i dati dalle API)
+sudo docker compose logs collector
+
+# in tempo reale (segue gli aggiornamenti)
+sudo docker compose logs -f collector
+
+# solo le ultime 50 righe
+sudo docker compose logs --tail 50 collector
+
+# tutti i servizi insieme
+sudo docker compose logs -f
+```
+
+```
+sudo docker compose exec db sh -c \
+'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
+USE meteo;
+SELECT station_code,
+       MAX(observation_time_local) AS ultima_osservazione,
+       MAX(created_at)             AS ultimo_inserimento,
+       COUNT(*)                    AS righe
+FROM realtime_rolando GROUP BY station_code;"'
+```

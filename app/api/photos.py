@@ -55,18 +55,31 @@ def exif_datetime(path: Path):
 
 
 def index_photos(folder):
-    """Elenca le immagini della cartella con il loro istante di scatto.
+    """Elenca le immagini della cartella (anche nelle sottocartelle) con il loro
+    istante di scatto.
 
-    Ritorna una lista di dict ordinati per data: {file, taken_at, has_exif}.
+    Ritorna una lista di dict ordinati per data:
+    {rel, file, folder, taken_at, has_exif}
+    dove `folder` è la sottocartella relativa ("" se la foto è nella radice) e
+    `rel` è il percorso relativo (per costruire l'URL).
     """
     base = Path(folder)
     if not base.is_dir():
         return []
     items = []
-    for p in base.iterdir():
+    for p in base.rglob("*"):
         if not p.is_file() or p.suffix.lower() not in IMG_EXT:
             continue
+        rel = p.relative_to(base)
+        parent = str(rel.parent)
+        sub = "" if parent == "." else parent.replace("\\", "/")
         taken_at, has_exif = exif_datetime(p)
-        items.append({"file": p.name, "taken_at": taken_at, "has_exif": has_exif})
+        items.append({
+            "rel": str(rel).replace("\\", "/"),
+            "file": p.name,
+            "folder": sub,
+            "taken_at": taken_at,
+            "has_exif": has_exif,
+        })
     items.sort(key=lambda x: x["taken_at"])
     return items

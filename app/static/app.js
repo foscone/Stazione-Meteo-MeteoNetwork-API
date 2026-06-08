@@ -311,25 +311,36 @@ async function loadPhotos() {
     return;
   }
   if (!data.count) {
-    g.innerHTML = `<div class="photos-empty">Nessuna foto trovata. Aggiungi immagini nella cartella <code>photos/</code> del progetto.</div>`;
+    g.innerHTML = `<div class="photos-empty">Nessuna foto trovata. Aggiungi immagini nella cartella <code>photos/</code> del progetto (anche in sottocartelle).</div>`;
     return;
   }
-  g.innerHTML = data.events.map(renderPhotoEvent).join("");
+  let uid = 0;
+  g.innerHTML = data.groups.map((group) => {
+    const header = group.folder
+      ? `<h3 class="photo-folder-title">📁 ${escapeHtml(group.folder)}</h3>`
+      : "";
+    const events = group.events.map((ev) => renderPhotoEvent(ev, uid++)).join("");
+    return `<div class="photo-folder">${header}${events}</div>`;
+  }).join("");
 }
 
-function renderPhotoEvent(ev) {
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderPhotoEvent(ev, uid) {
   const hh = ev.hour.slice(11, 13);
   const hourLabel = `${dmy(ev.hour)} · ${hh}:00–${hh}:59`;
   const thumbs = ev.photos.map((p) =>
-    `<a href="${p.url}" target="_blank" title="${p.file} — ${dmyTime(p.taken_at)}">` +
-    `<img loading="lazy" src="${p.url}" alt="${p.file}"></a>`
+    `<a href="${p.url}" target="_blank" title="${escapeHtml(p.file)} — ${dmyTime(p.taken_at)}">` +
+    `<img loading="lazy" src="${p.url}" alt=""></a>`
   ).join("");
   const count = ev.photos.length;
-  const safeId = ev.hour.replace(/[^0-9]/g, "");
   const hasDetail = ev.weather && ev.weather.source === "realtime";
   const detailUI = hasDetail
-    ? `<button class="btn btn-ghost detail-toggle" data-hour="${ev.hour}" data-target="pd-${safeId}">📈 Dettaglio meteo 48h</button>
-       <div class="photo-detail" id="pd-${safeId}" hidden></div>`
+    ? `<button class="btn btn-ghost detail-toggle" data-hour="${ev.hour}" data-uid="${uid}" data-target="pd-${uid}">📈 Dettaglio meteo 48h</button>
+       <div class="photo-detail" id="pd-${uid}" hidden></div>`
     : "";
   return `<div class="photo-event">
     <div class="photo-event-head">
@@ -392,7 +403,7 @@ function detailChart(id, cfg) {
   });
 }
 
-async function loadPhotoDetail(hour, container) {
+async function loadPhotoDetail(hour, sid, container) {
   const start = shiftHour(hour, -48);   // 48 ore prima
   const end = shiftHour(hour, 6);       // qualche ora dopo
   let rows;
@@ -408,7 +419,6 @@ async function loadPhotoDetail(hour, container) {
     return;
   }
 
-  const sid = hour.replace(/[^0-9]/g, "");
   container.innerHTML =
     `<div class="chart-box detail-box"><canvas id="pdt-${sid}"></canvas></div>` +
     `<div class="chart-box detail-box"><canvas id="pdr-${sid}"></canvas></div>` +
@@ -513,7 +523,7 @@ async function main() {
       if (!container.dataset.loaded) {
         container.dataset.loaded = "1";
         container.innerHTML = `<div class="photos-empty">Caricamento…</div>`;
-        loadPhotoDetail(btn.dataset.hour, container);
+        loadPhotoDetail(btn.dataset.hour, btn.dataset.uid, container);
       }
     } else {
       container.hidden = true;
